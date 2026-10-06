@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/color-shredder-core",
     "crates/color-shredder-cli",
-    "crates/color-shredder-ui",
+    "crates/color-shredder-ui", "crates/color-shredder-wasm",
 ]
 
 [workspace.package]

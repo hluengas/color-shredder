@@ -162,25 +162,23 @@ The algorithm supports three distinct placement strategies that produce dramatic
 
 ---
 
-### Part 4: In-Browser Multi-Core Engine (`www/index.html`)
+### Part 4: Compiled Rust WebAssembly & Browser Runtime
 
-#### [10. `/mnt/fuzedrive-pool/.../www/index.html`](file:///mnt/fuzedrive-pool/containers/podcommander/appdata/color-shredder-7p4qm/www/index.html)
+#### [10. `crates/color-shredder-wasm`](file:///home/podcommander/repos/color-shredder/color-shredder/crates/color-shredder-wasm) & [`www/worker.js`](file:///home/podcommander/repos/color-shredder/color-shredder/www/worker.js)
 
-- **Purpose**: The live web application accessible over Tailscale. Implements multi-core parallel processing directly in JavaScript using `SharedArrayBuffer` and `Atomics`.
+- **Purpose**: Compiles the core Rust engine into a multi-threaded WebAssembly binary (`color_shredder_wasm_bg.wasm`) with native Rayon support (`wasm-bindgen-rayon`).
 - **Architecture**:
-  1. **Main UI Thread**:
-     - Renders responsive controls, high-precision numeric inputs, and stat tiles.
-     - Never performs heavy math; blits shared image memory to `<canvas>` at a smooth 60 FPS.
-  2. **Dedicated Background Coordinator Worker (`coordinatorWorkerSource`)**:
-     - Runs the simulation state machine continuously in a background thread.
-     - Maintains $O(1)$ frontier updates using an inverted lookup table `frontierPos`.
-     - Controls pacing: in **Uncapped Maximum Speed** mode, it runs continuously without frame-rate sleeping to saturate CPU cores, yielding every 16 ms only to emit 60 FPS frames.
-  3. **Compute Search Worker Pool (`computeWorkerSource`)**:
-     - Spawns $N$ worker threads corresponding to detected CPU cores (`navigator.hardwareConcurrency`).
-     - Workers sleep on `Atomics.wait(control, 0, lastSeq)` futexes until notified.
-     - When notified via `Atomics.notify(control, 0, numWorkers)`, each worker evaluates its slice `[start, end)` of the frontier in parallel.
-     - Workers store their local minimum distance and candidate index into shared buffers and atomically increment the completion barrier.
-     - The coordinator wakes up, selects the global minimum across the $N$ worker results, and paints the pixel.
+  1. **Rust WebAssembly Module (`color-shredder-wasm`)**:
+     - Exports `ShredderEngine` and `initThreadPool` directly to JavaScript.
+     - Runs the exact same core algorithms (color generation, distance metrics, R*-tree indexing).
+     - When `engine.step()` is invoked, candidate search runs natively in parallel across Web Workers via Rayon (`frontier.par_iter()`).
+  2. **Dedicated Simulation Worker (`worker.js`)**:
+     - Runs the WebAssembly runtime in a background thread, preventing any blocking of the browser UI.
+     - Initializes Rayon's Web Worker thread pool with `initThreadPool(numThreads)`.
+     - Extracts the linear RGBA pixel buffer directly from WebAssembly linear memory (`wasmModule.memory.buffer`) and transfers frames to the main UI thread via zero-copy transferable `ArrayBuffer`s.
+  3. **Lightweight HTML/CSS Frontend (`www/index.html`)**:
+     - High-precision numeric inputs, real-time telemetry display, and crisp 60 FPS `<canvas>` blitting.
+     - Eliminates over 1,000 lines of manual JavaScript worker strings and memory offsets.
 
 ---
 

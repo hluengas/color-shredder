@@ -1,0 +1,31 @@
+/* tslint:disable */
+/* eslint-disable */
+export const memory: WebAssembly.Memory;
+export const __wbg_get_wasmstats_is_finished: (a: number) => number;
+export const __wbg_get_wasmstats_percent_complete: (a: number) => number;
+export const __wbg_get_wasmstats_pixels_available: (a: number) => number;
+export const __wbg_get_wasmstats_pixels_placed: (a: number) => number;
+export const __wbg_get_wasmstats_total_pixels: (a: number) => number;
+export const __wbg_set_wasmstats_is_finished: (a: number, b: number) => void;
+export const __wbg_set_wasmstats_percent_complete: (a: number, b: number) => void;
+export const __wbg_set_wasmstats_pixels_available: (a: number, b: number) => void;
+export const __wbg_set_wasmstats_pixels_placed: (a: number, b: number) => void;
+export const __wbg_set_wasmstats_total_pixels: (a: number, b: number) => void;
+export const __wbg_shredderengine_free: (a: number, b: number) => void;
+export const __wbg_wasmstats_free: (a: number, b: number) => void;
+export const __wbg_wbg_rayon_poolbuilder_free: (a: number, b: number) => void;
+export const initThreadPool: (a: number) => any;
+export const shredderengine_get_rgba_len: (a: number) => number;
+export const shredderengine_get_rgba_ptr: (a: number) => number;
+export const shredderengine_is_finished: (a: number) => number;
+export const shredderengine_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => number;
+export const shredderengine_step: (a: number, b: number) => number;
+export const wbg_rayon_poolbuilder_build: (a: number) => void;
+export const wbg_rayon_poolbuilder_numThreads: (a: number) => number;
+export const wbg_rayon_poolbuilder_receiver: (a: number) => number;
+export const wbg_rayon_start_worker: (a: number) => void;
+export const __externref_table_alloc: () => number;
+export const __wbindgen_externrefs: WebAssembly.Table;
+export const __wbindgen_malloc: (a: number, b: number) => number;
+export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
+export const __wbindgen_start: () => void;

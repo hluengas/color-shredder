@@ -293,7 +293,7 @@
 <body>
   <header>
     <h1>Color Shredder</h1>
-    <p>Tie-Dye Pixel Art Generation — High-Precision Parallel In-Browser Processing</p>
+    <p>Rust & WebAssembly Multi-Core Parallel Processing Engine</p>
   </header>
 
   <div class="main-layout">
@@ -435,579 +435,11 @@
     </div>
   </div>
 
-  <script>
-    // --- HIGH QUALITY DETERMINISTIC PRNG (SFC32) ---
-    function sfc32(a, b, c, d) {
-      return function() {
-        a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
-        let t = (a + b | 0) + d | 0;
-        d = d + 1 | 0;
-        a = b ^ b >>> 9;
-        b = c + (c << 3) | 0;
-        c = (c << 21 | c >>> 11);
-        c = c + t | 0;
-        return (t >>> 0) / 4294967296;
-      };
-    }
-
-    function createRng(seed) {
-      if (seed === null || seed === undefined || isNaN(seed)) {
-        return Math.random;
-      }
-      let s = seed >>> 0;
-      return sfc32(0x9E3779B9, 0x243F6A88, 0xB7E15162, s);
-    }
-
-    // --- COLOR SPACE PIPELINE ---
-    function hsvToRgb(h, s, v) {
-      let r, g, b;
-      let i = Math.floor(h * 6);
-      let f = h * 6 - i;
-      let p = v * (1 - s);
-      let q = v * (1 - f * s);
-      let t = v * (1 - (1 - f) * s);
-      switch (i % 6) {
-        case 0: r = v; g = t; b = p; break;
-        case 1: r = q; g = v; b = p; break;
-        case 2: r = p; g = v; b = t; break;
-        case 3: r = p; g = q; b = v; break;
-        case 4: r = t; g = p; b = v; break;
-        case 5: r = v; g = p; b = q; break;
-      }
-      return [r, g, b];
-    }
-
-    function hlsToRgb(h, l, s) {
-      if (s === 0) return [l, l, l];
-      let m2 = l <= 0.5 ? l * (1 + s) : l + s - l * s;
-      let m1 = 2 * l - m2;
-      function hueToRgb(m1, m2, h) {
-        if (h < 0) h += 1;
-        if (h > 1) h -= 1;
-        if (h < 1/6) return m1 + (m2 - m1) * h * 6;
-        if (h < 1/2) return m2;
-        if (h < 2/3) return m1 + (m2 - m1) * (2/3 - h) * 6;
-        return m1;
-      }
-      return [hueToRgb(m1, m2, h + 1/3), hueToRgb(m1, m2, h), hueToRgb(m1, m2, h - 1/3)];
-    }
-
-    function generateColors(bitDepth, space, fixedChannel, doShuffle, seed) {
-      const rng = createRng(seed);
-      const valuesPerChannel = 1 << bitDepth;
-      const numSubColors = valuesPerChannel * valuesPerChannel;
-      const total = valuesPerChannel * numSubColors;
-      const colors = new Float32Array(total * 3);
-      let idx = 0;
-
-      const hues = Array.from({ length: valuesPerChannel }, (_, i) => i);
-      for (let i = hues.length - 1; i > 0; i--) {
-        const j = Math.floor(rng() * (i + 1));
-        [hues[i], hues[j]] = [hues[j], hues[i]];
-      }
-
-      const channelShift = fixedChannel !== null ? fixedChannel : 0;
-
-      for (let chan1 of hues) {
-        const sliceColors = [];
-        for (let chan2 = 0; chan2 < valuesPerChannel; chan2++) {
-          for (let chan3 = 0; chan3 < valuesPerChannel; chan3++) {
-            const raw = [0, 0, 0];
-            raw[(0 + channelShift) % 3] = chan1 / valuesPerChannel;
-            raw[(1 + channelShift) % 3] = chan2 / valuesPerChannel;
-            raw[(2 + channelShift) % 3] = chan3 / valuesPerChannel;
-
-            let r = raw[0], g = raw[1], b = raw[2];
-            if (space === 'hsv') [r, g, b] = hsvToRgb(r, g, b);
-            else if (space === 'hls') [r, g, b] = hlsToRgb(r, g, b);
-
-            sliceColors.push(r, g, b);
-          }
-        }
-
-        for (let i = (sliceColors.length / 3) - 1; i > 0; i--) {
-          const j = Math.floor(rng() * (i + 1));
-          for (let c = 0; c < 3; c++) {
-            const tmp = sliceColors[i * 3 + c];
-            sliceColors[i * 3 + c] = sliceColors[j * 3 + c];
-            sliceColors[j * 3 + c] = tmp;
-          }
-        }
-
-        for (let i = 0; i < sliceColors.length; i++) {
-          colors[idx++] = sliceColors[i];
-        }
-      }
-
-      if (doShuffle) {
-        for (let i = total - 1; i > 0; i--) {
-          const j = Math.floor(rng() * (i + 1));
-          for (let c = 0; c < 3; c++) {
-            const tmp = colors[i * 3 + c];
-            colors[i * 3 + c] = colors[j * 3 + c];
-            colors[j * 3 + c] = tmp;
-          }
-        }
-      }
-
-      return colors;
-    }
-
-    // --- COMPUTE SEARCH WORKER SCRIPT ---
-    const computeWorkerSource = `
-      self.onmessage = function(e) {
-        const d = e.data;
-        const control = new Int32Array(d.controlSab);
-        const targetColor = new Float32Array(d.targetColorSab);
-        const resultsDist = new Float32Array(d.resultsDistSab);
-        const resultsIdx = new Int32Array(d.resultsIdxSab);
-        const grid = new Int32Array(d.gridSab);
-        const placedR = new Float32Array(d.placedRSab);
-        const placedG = new Float32Array(d.placedGSab);
-        const placedB = new Float32Array(d.placedBSab);
-        const frontier = new Int32Array(d.frontierSab);
-        const avgR = new Float32Array(d.avgRSab);
-        const avgG = new Float32Array(d.avgGSab);
-        const avgB = new Float32Array(d.avgBSab);
-
-        const id = d.id;
-        const numWorkers = d.numWorkers;
-        const width = d.width;
-        const height = d.height;
-        const strategy = d.strategy;
-
-        let lastSeq = 0;
-        while (true) {
-          while (Atomics.load(control, 0) === lastSeq) {
-            Atomics.wait(control, 0, lastSeq);
-          }
-          if (Atomics.load(control, 3) === 1) break; // exit flag
-          lastSeq = Atomics.load(control, 0);
-
-          const flen = Atomics.load(control, 1);
-          const tr = targetColor[0];
-          const tg = targetColor[1];
-          const tb = targetColor[2];
-
-          const start = Math.floor((id * flen) / numWorkers);
-          const end = Math.floor(((id + 1) * flen) / numWorkers);
-
-          let bestDist = Infinity;
-          let bestCand = -1;
-
-          if (strategy === 3) {
-            for (let j = start; j < end; j++) {
-              const cand = frontier[j];
-              const dr = tr - avgR[cand];
-              const dg = tg - avgG[cand];
-              const db = tb - avgB[cand];
-              const dist = dr * dr + dg * dg + db * db;
-              if (dist < bestDist) {
-                bestDist = dist;
-                bestCand = cand;
-              }
-            }
-          } else if (strategy === 2) {
-            for (let j = start; j < end; j++) {
-              const cand = frontier[j];
-              const cx = cand % width;
-              const cy = (cand / width) | 0;
-              let sumD = 0, count = 0;
-              for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                  if (dx === 0 && dy === 0) continue;
-                  const nx = cx + dx, ny = cy + dy;
-                  if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                    const n = ny * width + nx;
-                    if (grid[n] !== -1) {
-                      count++;
-                      const dr = tr - placedR[n];
-                      const dg = tg - placedG[n];
-                      const db = tb - placedB[n];
-                      sumD += dr * dr + dg * dg + db * db;
-                    }
-                  }
-                }
-              }
-              const avgD = count > 0 ? sumD / count : Infinity;
-              if (avgD < bestDist) {
-                bestDist = avgD;
-                bestCand = cand;
-              }
-            }
-          } else {
-            for (let j = start; j < end; j++) {
-              const cand = frontier[j];
-              const cx = cand % width;
-              const cy = (cand / width) | 0;
-              let minD = Infinity;
-              for (let dy = -1; dy <= 1; dy++) {
-                for (let dx = -1; dx <= 1; dx++) {
-                  if (dx === 0 && dy === 0) continue;
-                  const nx = cx + dx, ny = cy + dy;
-                  if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                    const n = ny * width + nx;
-                    if (grid[n] !== -1) {
-                      const dr = tr - placedR[n];
-                      const dg = tg - placedG[n];
-                      const db = tb - placedB[n];
-                      const d = dr * dr + dg * dg + db * db;
-                      if (d < minD) minD = d;
-                    }
-                  }
-                }
-              }
-              if (minD < bestDist) {
-                bestDist = minD;
-                bestCand = cand;
-              }
-            }
-          }
-
-          resultsDist[id] = bestDist;
-          resultsIdx[id] = bestCand;
-
-          const done = Atomics.add(control, 2, 1) + 1;
-          if (done === numWorkers) {
-            Atomics.notify(control, 2, 1);
-          }
-        }
-      };
-    `;
-
-    // --- COORDINATOR SIMULATION WORKER SCRIPT ---
-    const coordinatorWorkerSource = `
-      let isRunning = false;
-      let isFinished = false;
-      let width, height, totalPixels, strategy, numWorkers;
-      let control, targetColor, resultsDist, resultsIdx;
-      let grid, placedR, placedG, placedB, frontier, avgR, avgG, avgB;
-      let sharedRgba, colors;
-      let uncapped = true, batchSpeed = 500;
-
-      let frontierPos;
-      let frontierLen = 0;
-      let placedCount = 0;
-      let colorIdx = 0;
-      let taskSeq = 0;
-      let lastTickTime = 0;
-      let lastPlacedTick = 0;
-
-      function getNeighbors(idx) {
-        const x = idx % width;
-        const y = (idx / width) | 0;
-        const nbrs = [];
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const nx = x + dx, ny = y + dy;
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-              nbrs.push(ny * width + nx);
-            }
-          }
-        }
-        return nbrs;
-      }
-
-      function updateAverage(idx) {
-        let count = 0, sr = 0, sg = 0, sb = 0;
-        const cx = idx % width, cy = (idx / width) | 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            if (dx === 0 && dy === 0) continue;
-            const nx = cx + dx, ny = cy + dy;
-            if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-              const n = ny * width + nx;
-              if (grid[n] !== -1) {
-                count++;
-                sr += placedR[n];
-                sg += placedG[n];
-                sb += placedB[n];
-              }
-            }
-          }
-        }
-        if (count > 0) {
-          avgR[idx] = sr / count;
-          avgG[idx] = sg / count;
-          avgB[idx] = sb / count;
-        }
-      }
-
-      function paint(idx, r, g, b) {
-        grid[idx] = placedCount;
-        placedR[idx] = r;
-        placedG[idx] = g;
-        placedB[idx] = b;
-        placedCount++;
-
-        const pIdx = idx * 4;
-        sharedRgba[pIdx] = Math.round(r * 255);
-        sharedRgba[pIdx + 1] = Math.round(g * 255);
-        sharedRgba[pIdx + 2] = Math.round(b * 255);
-        sharedRgba[pIdx + 3] = 255;
-
-        const pos = frontierPos[idx];
-        if (pos !== -1) {
-          const lastCand = frontier[frontierLen - 1];
-          frontier[pos] = lastCand;
-          frontierPos[lastCand] = pos;
-          frontierPos[idx] = -1;
-          frontierLen--;
-        }
-
-        const nbrs = getNeighbors(idx);
-        for (let n of nbrs) {
-          if (grid[n] === -1) {
-            if (frontierPos[n] === -1) {
-              frontier[frontierLen] = n;
-              frontierPos[n] = frontierLen;
-              frontierLen++;
-            }
-            if (strategy === 3) {
-              updateAverage(n);
-            }
-          }
-        }
-      }
-
-      function searchParallel(tr, tg, tb) {
-        targetColor[0] = tr;
-        targetColor[1] = tg;
-        targetColor[2] = tb;
-        Atomics.store(control, 1, frontierLen);
-        Atomics.store(control, 2, 0); // reset done count
-
-        taskSeq++;
-        Atomics.store(control, 0, taskSeq);
-        Atomics.notify(control, 0, numWorkers);
-
-        while (true) {
-          const done = Atomics.load(control, 2);
-          if (done >= numWorkers) break;
-          Atomics.wait(control, 2, done);
-        }
-
-        let bestDist = resultsDist[0];
-        let bestCand = resultsIdx[0];
-        for (let i = 1; i < numWorkers; i++) {
-          if (resultsDist[i] < bestDist) {
-            bestDist = resultsDist[i];
-            bestCand = resultsIdx[i];
-          }
-        }
-        return bestCand;
-      }
-
-      function searchSingle(tr, tg, tb) {
-        let bestDist = Infinity;
-        let bestCand = frontier[0];
-
-        if (strategy === 3) {
-          for (let j = 0; j < frontierLen; j++) {
-            const cand = frontier[j];
-            const dr = tr - avgR[cand], dg = tg - avgG[cand], db = tb - avgB[cand];
-            const d = dr * dr + dg * dg + db * db;
-            if (d < bestDist) {
-              bestDist = d;
-              bestCand = cand;
-            }
-          }
-        } else if (strategy === 2) {
-          for (let j = 0; j < frontierLen; j++) {
-            const cand = frontier[j];
-            const cx = cand % width, cy = (cand / width) | 0;
-            let sumD = 0, count = 0;
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue;
-                const nx = cx + dx, ny = cy + dy;
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                  const n = ny * width + nx;
-                  if (grid[n] !== -1) {
-                    count++;
-                    const dr = tr - placedR[n], dg = tg - placedG[n], db = tb - placedB[n];
-                    sumD += dr * dr + dg * dg + db * db;
-                  }
-                }
-              }
-            }
-            const avgD = count > 0 ? sumD / count : Infinity;
-            if (avgD < bestDist) {
-              bestDist = avgD;
-              bestCand = cand;
-            }
-          }
-        } else {
-          for (let j = 0; j < frontierLen; j++) {
-            const cand = frontier[j];
-            const cx = cand % width, cy = (cand / width) | 0;
-            let minD = Infinity;
-            for (let dy = -1; dy <= 1; dy++) {
-              for (let dx = -1; dx <= 1; dx++) {
-                if (dx === 0 && dy === 0) continue;
-                const nx = cx + dx, ny = cy + dy;
-                if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-                  const n = ny * width + nx;
-                  if (grid[n] !== -1) {
-                    const dr = tr - placedR[n], dg = tg - placedG[n], db = tb - placedB[n];
-                    const d = dr * dr + dg * dg + db * db;
-                    if (d < minD) minD = d;
-                  }
-                }
-              }
-            }
-            if (minD < bestDist) {
-              bestDist = minD;
-              bestCand = cand;
-            }
-          }
-        }
-        return bestCand;
-      }
-
-      function runLoop() {
-        if (!isRunning || isFinished) return;
-
-        const totalColors = colors.length / 3;
-        let stepsThisBatch = 0;
-
-        while (isRunning && !isFinished) {
-          if (placedCount >= totalPixels || frontierLen === 0) {
-            isFinished = true;
-            isRunning = false;
-            self.postMessage({
-              cmd: 'tick',
-              placedCount,
-              frontierLen,
-              finished: true
-            });
-            return;
-          }
-
-          const cPos = (colorIdx % totalColors) * 3;
-          const tr = colors[cPos];
-          const tg = colors[cPos + 1];
-          const tb = colors[cPos + 2];
-          colorIdx++;
-
-          let bestCand;
-          if (numWorkers > 1 && frontierLen >= 64) {
-            bestCand = searchParallel(tr, tg, tb);
-          } else {
-            bestCand = searchSingle(tr, tg, tb);
-          }
-
-          paint(bestCand, tr, tg, tb);
-          stepsThisBatch++;
-
-          const now = performance.now();
-          if (uncapped) {
-            // In uncapped mode: burn CPU continuously, yielding to event queue every 16ms for 60fps updates and pause responsiveness
-            if (now - lastTickTime >= 16) {
-              self.postMessage({
-                cmd: 'tick',
-                placedCount,
-                frontierLen,
-                finished: false
-              });
-              lastTickTime = now;
-              setTimeout(runLoop, 0);
-              return;
-            }
-          } else {
-            // In paced mode: execute requested batchSpeed pixels per animation frame
-            if (stepsThisBatch >= batchSpeed) {
-              self.postMessage({
-                cmd: 'tick',
-                placedCount,
-                frontierLen,
-                finished: false
-              });
-              lastTickTime = now;
-              setTimeout(runLoop, 16);
-              return;
-            }
-          }
-        }
-      }
-
-      self.onmessage = function(e) {
-        const msg = e.data;
-        if (msg.cmd === 'init') {
-          width = msg.width;
-          height = msg.height;
-          totalPixels = width * height;
-          strategy = msg.strategy;
-          numWorkers = msg.numWorkers;
-          uncapped = msg.uncapped;
-          batchSpeed = msg.batchSpeed;
-
-          control = new Int32Array(msg.controlSab);
-          targetColor = new Float32Array(msg.targetColorSab);
-          resultsDist = new Float32Array(msg.resultsDistSab);
-          resultsIdx = new Int32Array(msg.resultsIdxSab);
-          grid = new Int32Array(msg.gridSab);
-          placedR = new Float32Array(msg.placedRSab);
-          placedG = new Float32Array(msg.placedGSab);
-          placedB = new Float32Array(msg.placedBSab);
-          frontier = new Int32Array(msg.frontierSab);
-          avgR = new Float32Array(msg.avgRSab);
-          avgG = new Float32Array(msg.avgGSab);
-          avgB = new Float32Array(msg.avgBSab);
-          sharedRgba = new Uint8ClampedArray(msg.sharedRgbaSab);
-          colors = new Float32Array(msg.colorsSab);
-
-          frontierPos = new Int32Array(totalPixels).fill(-1);
-          frontierLen = 0;
-          placedCount = 0;
-          colorIdx = 0;
-          taskSeq = 0;
-          isFinished = false;
-          isRunning = false;
-
-          // Paint seed pixel
-          const sx = Math.min(Math.max(0, msg.startX), width - 1);
-          const sy = Math.min(Math.max(0, msg.startY), height - 1);
-          const startIdx = sy * width + sx;
-          const r = colors[0], g = colors[1], b = colors[2];
-          colorIdx = 1;
-          paint(startIdx, r, g, b);
-
-          lastTickTime = performance.now();
-          lastPlacedTick = placedCount;
-
-          self.postMessage({
-            cmd: 'tick',
-            placedCount,
-            frontierLen,
-            finished: false
-          });
-        } else if (msg.cmd === 'start') {
-          if (!isRunning && !isFinished) {
-            isRunning = true;
-            runLoop();
-          }
-        } else if (msg.cmd === 'pause') {
-          isRunning = false;
-        } else if (msg.cmd === 'setTuning') {
-          uncapped = msg.uncapped;
-          batchSpeed = msg.batchSpeed;
-        }
-      };
-    `;
-
-    // --- MAIN THREAD COORDINATION ---
-    let coordinatorWorker = null;
-    let computeWorkers = [];
-    let computeBlobUrl = null;
-    let coordinatorBlobUrl = null;
-    let sharedRgbaSab = null;
-    let sharedRgbaView = null;
-    let localImageData = null;
-    let totalCanvasPixels = 4096;
-
+  <script type="module">
+    let simWorker = null;
     let isRunning = false;
+    let totalCanvasPixels = 4096;
+    let localImageData = null;
     let lastStatsTime = 0;
     let lastPlacedStats = 0;
 
@@ -1068,8 +500,8 @@
     inpBitDepth.addEventListener('input', updateBadge);
 
     chkUncapped.addEventListener('change', () => {
-      if (coordinatorWorker) {
-        coordinatorWorker.postMessage({
+      if (simWorker) {
+        simWorker.postMessage({
           cmd: 'setTuning',
           uncapped: chkUncapped.checked,
           batchSpeed: Math.max(1, parseInt(inpBatchSize.value) || 500)
@@ -1078,8 +510,8 @@
     });
 
     inpBatchSize.addEventListener('input', () => {
-      if (coordinatorWorker) {
-        coordinatorWorker.postMessage({
+      if (simWorker) {
+        simWorker.postMessage({
           cmd: 'setTuning',
           uncapped: chkUncapped.checked,
           batchSpeed: Math.max(1, parseInt(inpBatchSize.value) || 500)
@@ -1087,25 +519,14 @@
       }
     });
 
-    function terminateAllWorkers() {
-      if (coordinatorWorker) {
-        coordinatorWorker.terminate();
-        coordinatorWorker = null;
-      }
-      for (let w of computeWorkers) {
-        w.terminate();
-      }
-      computeWorkers = [];
-      if (computeBlobUrl) URL.revokeObjectURL(computeBlobUrl);
-      if (coordinatorBlobUrl) URL.revokeObjectURL(coordinatorBlobUrl);
-      computeBlobUrl = null;
-      coordinatorBlobUrl = null;
-    }
-
     function reset() {
       isRunning = false;
       btnToggle.textContent = 'Start';
-      terminateAllWorkers();
+
+      if (simWorker) {
+        simWorker.terminate();
+        simWorker = null;
+      }
 
       const width = Math.max(2, Math.min(2048, parseInt(inpWidth.value) || 64));
       const height = Math.max(2, Math.min(2048, parseInt(inpHeight.value) || 64));
@@ -1116,7 +537,7 @@
       const space = selColorSpace.value;
       const fixed = selFixedChannel.value === 'none' ? null : parseInt(selFixedChannel.value);
       const shuffle = chkShuffle.checked;
-      const seedVal = inpSeed.value.trim() !== '' ? parseInt(inpSeed.value) : null;
+      const seedVal = inpSeed.value.trim() !== '' ? parseFloat(inpSeed.value) : null;
       const threadCount = Math.max(1, Math.min(128, parseInt(inpThreads.value) || 4));
       const uncapped = chkUncapped.checked;
       const batchSpeed = Math.max(1, parseInt(inpBatchSize.value) || 500);
@@ -1137,89 +558,30 @@
       canvas.height = height;
       localImageData = ctx.createImageData(width, height);
 
-      const hasSAB = (typeof SharedArrayBuffer !== 'undefined');
-      if (!hasSAB) {
-        elWarn.style.display = 'block';
-        elWarn.textContent = 'Notice: SharedArrayBuffer is not available in this browser context. Cross-origin isolation required for multi-threading.';
-        return;
-      }
+      // Spawn Dedicated WebAssembly Simulation Worker
+      simWorker = new Worker('worker.js', { type: 'module' });
 
-      const colors = generateColors(bitDepth, space, fixed, shuffle, seedVal);
-
-      // Shared Array Buffers
-      const controlSab = new SharedArrayBuffer(64);
-      const targetColorSab = new SharedArrayBuffer(16);
-      const resultsDistSab = new SharedArrayBuffer(threadCount * 4);
-      const resultsIdxSab = new SharedArrayBuffer(threadCount * 4);
-      const gridSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      const placedRSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      const placedGSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      const placedBSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      const frontierSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      const avgRSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      const avgGSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      const avgBSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      sharedRgbaSab = new SharedArrayBuffer(totalCanvasPixels * 4);
-      sharedRgbaView = new Uint8Array(sharedRgbaSab);
-      const colorsSab = new SharedArrayBuffer(colors.length * 4);
-
-      new Int32Array(gridSab).fill(-1);
-      new Float32Array(colorsSab).set(colors);
-
-      // Initialize compute workers
-      const computeBlob = new Blob([computeWorkerSource], { type: 'application/javascript' });
-      computeBlobUrl = URL.createObjectURL(computeBlob);
-
-      for (let i = 0; i < threadCount; i++) {
-        const worker = new Worker(computeBlobUrl);
-        worker.postMessage({
-          id: i,
-          numWorkers: threadCount,
-          width,
-          height,
-          strategy,
-          controlSab,
-          targetColorSab,
-          resultsDistSab,
-          resultsIdxSab,
-          gridSab,
-          placedRSab,
-          placedGSab,
-          placedBSab,
-          frontierSab,
-          avgRSab,
-          avgGSab,
-          avgBSab
-        });
-        computeWorkers.push(worker);
-      }
-
-      // Initialize coordinator worker
-      const coordinatorBlob = new Blob([coordinatorWorkerSource], { type: 'application/javascript' });
-      coordinatorBlobUrl = URL.createObjectURL(coordinatorBlob);
-      coordinatorWorker = new Worker(coordinatorBlobUrl);
-
-      coordinatorWorker.onmessage = function(e) {
+      simWorker.onmessage = function(e) {
         const msg = e.data;
-        if (msg.cmd === 'tick') {
-          // Blit to canvas
-          localImageData.data.set(sharedRgbaView);
+        if (msg.cmd === 'frame') {
+          // Blit incoming pixel buffer to canvas
+          localImageData.data.set(new Uint8ClampedArray(msg.pixels));
           ctx.putImageData(localImageData, 0, 0);
 
-          // Update stats
+          // Update stats telemetry
           const now = performance.now();
           const elapsed = (now - lastStatsTime) / 1000;
           if (elapsed >= 0.25 || msg.finished) {
-            const placedDiff = msg.placedCount - lastPlacedStats;
+            const placedDiff = msg.placed - lastPlacedStats;
             const rate = elapsed > 0 ? Math.round(placedDiff / elapsed) : 0;
             elRate.textContent = msg.finished ? 'Complete' : `${rate.toLocaleString()} px/s`;
             lastStatsTime = now;
-            lastPlacedStats = msg.placedCount;
+            lastPlacedStats = msg.placed;
           }
 
-          elPlaced.textContent = `${msg.placedCount.toLocaleString()} / ${totalCanvasPixels.toLocaleString()}`;
-          elFrontier.textContent = msg.frontierLen.toLocaleString();
-          const pct = (msg.placedCount / totalCanvasPixels * 100).toFixed(1);
+          elPlaced.textContent = `${msg.placed.toLocaleString()} / ${totalCanvasPixels.toLocaleString()}`;
+          elFrontier.textContent = msg.frontier.toLocaleString();
+          const pct = (msg.placed / totalCanvasPixels * 100).toFixed(1);
           elPct.textContent = `${pct}%`;
 
           if (msg.finished) {
@@ -1229,30 +591,21 @@
         }
       };
 
-      coordinatorWorker.postMessage({
+      simWorker.postMessage({
         cmd: 'init',
         width,
         height,
         startX,
         startY,
         strategy,
-        numWorkers: threadCount,
+        bitDepth,
+        colorSpace: space,
+        fixedChannel: fixed,
+        shuffle,
+        seed: seedVal,
+        threads: threadCount,
         uncapped,
-        batchSpeed,
-        controlSab,
-        targetColorSab,
-        resultsDistSab,
-        resultsIdxSab,
-        gridSab,
-        placedRSab,
-        placedGSab,
-        placedBSab,
-        frontierSab,
-        avgRSab,
-        avgGSab,
-        avgBSab,
-        sharedRgbaSab,
-        colorsSab
+        batchSpeed
       });
 
       lastStatsTime = performance.now();
@@ -1269,10 +622,10 @@
         btnToggle.textContent = 'Pause';
         lastStatsTime = performance.now();
         lastPlacedStats = parseInt(elPlaced.textContent) || 0;
-        if (coordinatorWorker) coordinatorWorker.postMessage({ cmd: 'start' });
+        if (simWorker) simWorker.postMessage({ cmd: 'start' });
       } else {
         btnToggle.textContent = 'Start';
-        if (coordinatorWorker) coordinatorWorker.postMessage({ cmd: 'pause' });
+        if (simWorker) simWorker.postMessage({ cmd: 'pause' });
       }
     });
 
