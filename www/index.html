@@ -418,6 +418,13 @@
 
       <div class="control-group" style="padding-bottom: 2px;">
         <label class="checkbox-row">
+          <input type="checkbox" id="chk-rstar" checked>
+          <span>Spatial Index Acceleration (R*-Tree for Strategy 3)</span>
+        </label>
+      </div>
+
+      <div class="control-group" style="padding-bottom: 2px;">
+        <label class="checkbox-row">
           <input type="checkbox" id="chk-shuffle" checked>
           <span>Final Global Palette Shuffle</span>
         </label>
@@ -455,6 +462,7 @@
     const inpThreads = document.getElementById('inp-threads');
     const inpBatchSize = document.getElementById('inp-batch-size');
     const chkUncapped = document.getElementById('chk-uncapped');
+    const chkRStar = document.getElementById('chk-rstar');
     const chkShuffle = document.getElementById('chk-shuffle');
     const coresHint = document.getElementById('cores-hint');
 
@@ -563,7 +571,15 @@
 
       simWorker.onmessage = function(e) {
         const msg = e.data;
-        if (msg.cmd === 'frame') {
+        if (msg.cmd === 'ready') {
+          if (msg.initError) {
+            coresHint.textContent = `[Rayon Error: ${msg.initError.slice(0, 50)}...]`;
+            elWarn.style.display = 'block';
+            elWarn.textContent = `Thread Pool Initialization Error: ${msg.initError}`;
+          } else {
+            coresHint.textContent = `[${msg.activeThreads} Rayon threads active]`;
+          }
+        } else if (msg.cmd === 'frame') {
           // Blit incoming pixel buffer to canvas
           localImageData.data.set(new Uint8ClampedArray(msg.pixels));
           ctx.putImageData(localImageData, 0, 0);
@@ -605,7 +621,8 @@
         seed: seedVal,
         threads: threadCount,
         uncapped,
-        batchSpeed
+        batchSpeed,
+        useRStar: chkRStar.checked
       });
 
       lastStatsTime = performance.now();

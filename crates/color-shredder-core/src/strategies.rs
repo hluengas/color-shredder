@@ -59,11 +59,13 @@ fn calculate_distance(
         Strategy::Min => {
             let mut min_d = f32::MAX;
             let mut count = 0;
-            for (_n_coord, n_color) in canvas.colored_neighbors(candidate) {
-                count += 1;
-                let d = target_color.dist_sq(n_color);
-                if d < min_d {
-                    min_d = d;
+            for n in canvas.neighbors(candidate) {
+                if let Some(n_color) = canvas.get_color(n) {
+                    count += 1;
+                    let d = target_color.dist_sq(n_color);
+                    if d < min_d {
+                        min_d = d;
+                    }
                 }
             }
             if count > 0 { min_d } else { f32::MAX }
@@ -71,9 +73,11 @@ fn calculate_distance(
         Strategy::Average => {
             let mut sum_d = 0.0f32;
             let mut count = 0;
-            for (_n_coord, n_color) in canvas.colored_neighbors(candidate) {
-                count += 1;
-                sum_d += target_color.dist_sq(n_color);
+            for n in canvas.neighbors(candidate) {
+                if let Some(n_color) = canvas.get_color(n) {
+                    count += 1;
+                    sum_d += target_color.dist_sq(n_color);
+                }
             }
             if count > 0 {
                 sum_d / count as f32

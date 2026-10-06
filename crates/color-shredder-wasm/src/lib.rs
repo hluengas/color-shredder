@@ -7,6 +7,11 @@ use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 #[wasm_bindgen]
+pub fn get_current_threads() -> usize {
+    rayon::current_num_threads()
+}
+
+#[wasm_bindgen]
 pub struct ShredderEngine {
     engine: Engine,
 }
@@ -35,6 +40,7 @@ impl ShredderEngine {
         fixed_channel_opt: Option<usize>,
         shuffle: bool,
         seed_opt: Option<f64>,
+        use_rstar: bool,
     ) -> Self {
         let strategy = Strategy::from_u32(strategy_num).unwrap_or(Strategy::Neighborhood);
         let color_space = match color_space_str {
@@ -50,7 +56,7 @@ impl ShredderEngine {
             height,
             start_point: Coordinate::new(start_x, start_y),
             strategy,
-            use_rstar: true,
+            use_rstar,
             color_config: ColorGeneratorConfig {
                 bit_depth,
                 color_space,

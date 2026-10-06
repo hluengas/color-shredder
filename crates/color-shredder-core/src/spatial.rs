@@ -27,27 +27,22 @@ impl PointDistance for RStarCandidate {
     }
 }
 
+use std::collections::HashMap;
+
 /// Dynamic R*-Tree manager maintaining spatial indexes of available frontier cells.
 pub struct RStarIndex {
     tree: RTree<RStarCandidate>,
-    lookup: Vec<Option<RStarCandidate>>,
-    width: usize,
+    lookup: HashMap<Coordinate, RStarCandidate>,
     next_id: u64,
 }
 
 impl RStarIndex {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(_width: usize, _height: usize) -> Self {
         Self {
             tree: RTree::new(),
-            lookup: vec![None; width * height],
-            width,
+            lookup: HashMap::new(),
             next_id: 0,
         }
-    }
-
-    #[inline]
-    fn idx(&self, coord: Coordinate) -> usize {
-        coord.y * self.width + coord.x
     }
 
     /// Query the tree for the candidate with minimum color distance to `target_color`.
@@ -59,12 +54,9 @@ impl RStarIndex {
 
     /// Inserts or updates a candidate cell with its latest neighborhood average color.
     pub fn upsert(&mut self, coord: Coordinate, canvas: &Canvas) {
-        let idx = self.idx(coord);
-
         // Remove previous entry if it was already indexed
-        if let Some(existing) = self.lookup[idx] {
+        if let Some(existing) = self.lookup.remove(&coord) {
             self.tree.remove(&existing);
-            self.lookup[idx] = None;
         }
 
         // Compute updated neighborhood average
@@ -77,16 +69,14 @@ impl RStarIndex {
             self.next_id += 1;
 
             self.tree.insert(candidate);
-            self.lookup[idx] = Some(candidate);
+            self.lookup.insert(coord, candidate);
         }
     }
 
     /// Remove a coordinate from the index (e.g. once it has been painted).
     pub fn remove(&mut self, coord: Coordinate) {
-        let idx = self.idx(coord);
-        if let Some(existing) = self.lookup[idx] {
+        if let Some(existing) = self.lookup.remove(&coord) {
             self.tree.remove(&existing);
-            self.lookup[idx] = None;
         }
     }
 

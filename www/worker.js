@@ -1,4 +1,4 @@
-import init, { initThreadPool, ShredderEngine } from './pkg/color_shredder_wasm.js';
+import init, { initThreadPool, ShredderEngine, get_current_threads } from './pkg/color_shredder_wasm.js';
 
 let wasmModule = null;
 let engine = null;
@@ -24,12 +24,16 @@ self.onmessage = async function(e) {
     }
 
     // Initialize Rayon thread pool with detected/requested threads
+    let initError = null;
     if (!threadPoolInitialized && msg.threads > 1) {
       try {
+        console.log(`[Worker] Initializing Rayon thread pool with ${msg.threads} threads...`);
         await initThreadPool(msg.threads);
         threadPoolInitialized = true;
+        console.log(`[Worker] Rayon thread pool initialized successfully!`);
       } catch (err) {
-        console.warn('Rayon thread pool note:', err);
+        initError = String(err && err.stack ? err.stack : err);
+        console.error('Rayon thread pool initialization failed:', err);
       }
     }
 
@@ -43,8 +47,17 @@ self.onmessage = async function(e) {
       msg.colorSpace,
       msg.fixedChannel,
       msg.shuffle,
-      msg.seed
+      msg.seed,
+      msg.useRStar
     );
+
+    const activeThreads = get_current_threads();
+    console.log(`[Worker] ShredderEngine initialized. Active Rayon threads: ${activeThreads}`);
+    self.postMessage({
+      cmd: 'ready',
+      activeThreads,
+      initError
+    });
 
     lastTickTime = performance.now();
     sendFrame(1, 8, false);
@@ -92,7 +105,8 @@ function runLoop() {
 
     const now = performance.now();
     if (uncapped) {
-      if (now - lastTickTime >= 16) {
+      // 30 FPS throttle prevents browser GC thrashing with multi-megabyte frame transfers
+      if (now - lastTickTime >= 33) {
         sendFrame(stats.pixels_placed, stats.pixels_available, false);
         lastTickTime = now;
         setTimeout(runLoop, 0);

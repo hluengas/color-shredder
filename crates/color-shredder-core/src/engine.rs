@@ -67,12 +67,13 @@ impl Engine {
         };
 
         let size = config.width * config.height;
+        let initial_frontier_cap = (size / 16).clamp(64, 32_768);
         let mut engine = Self {
             config,
             canvas,
             colors,
             color_index: 0,
-            frontier: Vec::with_capacity(size / 4),
+            frontier: Vec::with_capacity(initial_frontier_cap),
             frontier_set: vec![false; size],
             rstar_index,
             is_finished: false,

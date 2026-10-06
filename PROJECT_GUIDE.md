@@ -199,7 +199,23 @@ The algorithm supports three distinct placement strategies that produce dramatic
 ### Native Rust Core Tests
 
 ```bash
-cargo test -p color-shredder-core
+cargo test --workspace
+```
+
+### WebAssembly Compilation (Multi-Threaded Rayon)
+
+```bash
+RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals \
+  -C link-arg=--shared-memory \
+  -C link-arg=--max-memory=2147483648 \
+  -C link-arg=--import-memory \
+  -C link-arg=--export=__wasm_init_tls \
+  -C link-arg=--export=__tls_size \
+  -C link-arg=--export=__tls_align \
+  -C link-arg=--export=__tls_base' \
+$HOME/.cargo/bin/cargo build --target wasm32-unknown-unknown -Z build-std=std,panic_abort --release -p color-shredder-wasm
+
+$HOME/.cargo/bin/wasm-bindgen target/wasm32-unknown-unknown/release/color_shredder_wasm.wasm --out-dir www/pkg --target web
 ```
 
 ### Native CLI Execution

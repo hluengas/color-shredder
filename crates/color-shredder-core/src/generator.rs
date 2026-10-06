@@ -48,9 +48,10 @@ pub fn generate_colors(config: &ColorGeneratorConfig) -> Vec<Color> {
     rng.shuffle(&mut hues);
 
     let channel_shift = config.fixed_channel.unwrap_or(0);
+    let mut sub_list = Vec::with_capacity(num_sub_colors);
 
     for chan1_val in hues {
-        let mut sub_list = Vec::with_capacity(num_sub_colors);
+        sub_list.clear();
 
         for chan2_val in 0..values_per_channel {
             for chan3_val in 0..values_per_channel {
@@ -71,7 +72,7 @@ pub fn generate_colors(config: &ColorGeneratorConfig) -> Vec<Color> {
 
         // Shuffle within the slice
         rng.shuffle(&mut sub_list);
-        result.extend(sub_list);
+        result.extend(sub_list.iter().copied());
     }
 
     // Final shuffle across slices if no channel was explicitly held fixed

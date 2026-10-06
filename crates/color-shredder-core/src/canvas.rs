@@ -22,23 +22,18 @@ impl Coordinate {
 pub struct Canvas {
     pub width: usize,
     pub height: usize,
-    pixels: Vec<Option<Color>>,
     rgba_buffer: Vec<u8>,
 }
 
 impl Canvas {
     pub fn new(width: usize, height: usize) -> Self {
         let size = width * height;
-        let mut rgba = vec![0u8; size * 4];
-        // Initialize fully opaque black pixels [0, 0, 0, 255]
-        for chunk in rgba.chunks_exact_mut(4) {
-            chunk[3] = 255;
-        }
+        // Initialize with alpha = 0 (uncolored)
+        let rgba = vec![0u8; size * 4];
 
         Self {
             width,
             height,
-            pixels: vec![None; size],
             rgba_buffer: rgba,
         }
     }
@@ -55,21 +50,28 @@ impl Canvas {
 
     #[inline]
     pub fn is_colored(&self, coord: Coordinate) -> bool {
-        self.pixels[self.index_of(coord)].is_some()
+        let idx = self.index_of(coord) * 4;
+        self.rgba_buffer[idx + 3] != 0
     }
 
     #[inline]
     pub fn get_color(&self, coord: Coordinate) -> Option<Color> {
-        self.pixels[self.index_of(coord)]
+        let idx = self.index_of(coord) * 4;
+        if self.rgba_buffer[idx + 3] != 0 {
+            Some(Color::from_rgb8(
+                self.rgba_buffer[idx],
+                self.rgba_buffer[idx + 1],
+                self.rgba_buffer[idx + 2],
+            ))
+        } else {
+            None
+        }
     }
 
     /// Paint a pixel at `coord` with `color` and update the RGBA buffer.
     pub fn paint(&mut self, coord: Coordinate, color: Color) {
-        let idx = self.index_of(coord);
-        self.pixels[idx] = Some(color);
-
         let [r, g, b, a] = color.to_rgba8();
-        let rgba_idx = idx * 4;
+        let rgba_idx = self.index_of(coord) * 4;
         self.rgba_buffer[rgba_idx] = r;
         self.rgba_buffer[rgba_idx + 1] = g;
         self.rgba_buffer[rgba_idx + 2] = b;
