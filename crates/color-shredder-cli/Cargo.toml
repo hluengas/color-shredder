@@ -1,0 +1,12 @@
+[package]
+name = "color-shredder-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+color-shredder-core = { path = "../color-shredder-core" }
+clap = { workspace = true }
+image = { workspace = true }
+fastrand = { workspace = true }

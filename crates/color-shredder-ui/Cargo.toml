@@ -1,0 +1,18 @@
+[package]
+name = "color-shredder-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+color-shredder-core = { path = "../color-shredder-core" }
+dioxus = { version = "0.6", features = ["web"] }
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = ["CanvasRenderingContext2d", "HtmlCanvasElement", "ImageData"] }
+gloo-timers = { version = "0.3", features = ["futures"] }
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]

@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/color-shredder-core",
+    "crates/color-shredder-cli",
+    "crates/color-shredder-ui",
+]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+authors = ["Henry Luengas <henryluengas@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/henryluengas/color-shredder"
+
+[workspace.dependencies]
+rstar = "0.12"
+fastrand = "2.3"
+serde = { version = "1.0", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+clap = { version = "4.5", features = ["derive"] }
+rayon = "1.10"
