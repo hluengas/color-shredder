@@ -1,5 +1,5 @@
 use color_shredder_core::{
-    ColorGeneratorConfig, ColorSpace, Coordinate, Engine, EngineConfig, Strategy,
+    ColorGeneratorConfig, ColorSpace, Coordinate, Engine, EngineConfig, PaletteMode, Strategy,
 };
 use wasm_bindgen::prelude::*;
 
@@ -41,6 +41,7 @@ impl ShredderEngine {
         shuffle: bool,
         seed_opt: Option<f64>,
         use_rstar: bool,
+        palette_mode_opt: Option<String>,
     ) -> Self {
         let strategy = Strategy::from_u32(strategy_num).unwrap_or(Strategy::Neighborhood);
         let color_space = match color_space_str {
@@ -50,6 +51,11 @@ impl ShredderEngine {
         };
 
         let seed = seed_opt.map(|s| s as u64);
+
+        let mode = match palette_mode_opt.as_deref() {
+            Some("on_the_fly") | Some("stream") => PaletteMode::OnTheFly,
+            _ => PaletteMode::Precomputed,
+        };
 
         let config = EngineConfig {
             width,
@@ -63,6 +69,7 @@ impl ShredderEngine {
                 fixed_channel: fixed_channel_opt,
                 shuffle,
                 seed,
+                mode,
             },
         };
 

@@ -48,7 +48,8 @@ self.onmessage = async function(e) {
       msg.fixedChannel,
       msg.shuffle,
       msg.seed,
-      msg.useRStar
+      msg.useRStar,
+      msg.paletteMode
     );
 
     const activeThreads = get_current_threads();

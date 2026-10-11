@@ -28,7 +28,7 @@ pub mod engine;
 
 pub use color::{Color, ColorSpace};
 pub use canvas::{Canvas, Coordinate};
-pub use generator::{generate_colors, ColorGeneratorConfig};
+pub use generator::{generate_colors, ColorGeneratorConfig, PaletteMode, StreamingColorSource};
 pub use spatial::RStarIndex;
 pub use strategies::Strategy;
 pub use engine::{Engine, EngineConfig, EngineStats};

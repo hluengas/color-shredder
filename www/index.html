@@ -368,6 +368,13 @@
 
       <div class="form-grid-2">
         <div class="control-group">
+          <label for="sel-palette-mode">Palette Mode</label>
+          <select id="sel-palette-mode">
+            <option value="precomputed" selected>Precomputed (Unique)</option>
+            <option value="on_the_fly">On The Fly (Batched Random)</option>
+          </select>
+        </div>
+        <div class="control-group">
           <label for="sel-color-space">Color Space</label>
           <select id="sel-color-space">
             <option value="rgb" selected>RGB</option>
@@ -375,26 +382,27 @@
             <option value="hls">HLS (Hue, Light, Sat)</option>
           </select>
         </div>
-        <div class="control-group">
-          <label for="inp-bit-depth">Bit Depth <span class="hint">[1 - 8]</span></label>
-          <input type="number" id="inp-bit-depth" value="6" min="1" max="8" step="1">
-        </div>
       </div>
 
       <div class="form-grid-2">
         <div class="control-group">
-          <label for="sel-fixed-channel">Fixed Channel <span class="hint">[-x / Grouped]</span></label>
-          <select id="sel-fixed-channel">
-            <option value="none" selected>None (Full Shuffle)</option>
-            <option value="0">Red (Group by Red slices)</option>
-            <option value="1">Green (Group by Green slices)</option>
-            <option value="2">Blue (Group by Blue slices)</option>
-          </select>
+          <label for="inp-bit-depth">Bit Depth <span class="hint" id="bit-depth-hint">[1 - 8]</span></label>
+          <input type="number" id="inp-bit-depth" value="6" min="1" max="8" step="1">
         </div>
         <div class="control-group">
           <label for="inp-seed">PRNG Seed <span class="hint">[Optional]</span></label>
           <input type="number" id="inp-seed" placeholder="Random" min="0" max="4294967295" step="1">
         </div>
+      </div>
+
+      <div class="control-group">
+        <label for="sel-fixed-channel">Fixed Channel <span class="hint">[-x / Grouped]</span></label>
+        <select id="sel-fixed-channel">
+          <option value="none" selected>None (Full Shuffle)</option>
+          <option value="0">Red (Group by Red slices)</option>
+          <option value="1">Green (Group by Green slices)</option>
+          <option value="2">Blue (Group by Blue slices)</option>
+        </select>
       </div>
 
       <!-- Execution / Step Tuning & Multiprocessing -->
@@ -456,8 +464,10 @@
     const inpStartX = document.getElementById('inp-start-x');
     const inpStartY = document.getElementById('inp-start-y');
     const selStrategy = document.getElementById('sel-strategy');
+    const selPaletteMode = document.getElementById('sel-palette-mode');
     const selColorSpace = document.getElementById('sel-color-space');
     const inpBitDepth = document.getElementById('inp-bit-depth');
+    const bitDepthHint = document.getElementById('bit-depth-hint');
     const selFixedChannel = document.getElementById('sel-fixed-channel');
     const inpSeed = document.getElementById('inp-seed');
     const inpThreads = document.getElementById('inp-threads');
@@ -485,10 +495,31 @@
     coresHint.textContent = `[${maxCores} cores detected]`;
 
     function updateBadge() {
+      const mode = selPaletteMode.value;
       const depth = parseInt(inpBitDepth.value) || 6;
       const count = Math.pow(2, depth * 3);
-      elBadge.textContent = `${count.toLocaleString()} colors (${depth}-bit)`;
+      if (mode === 'on_the_fly') {
+        const countStr = count >= 1e9 ? (count / 1e9).toFixed(1) + 'B' : count.toLocaleString();
+        elBadge.textContent = `${countStr} space (${depth}-bit stream)`;
+      } else {
+        elBadge.textContent = `${count.toLocaleString()} colors (${depth}-bit)`;
+      }
     }
+
+    selPaletteMode.addEventListener('change', () => {
+      const isStreaming = selPaletteMode.value === 'on_the_fly';
+      if (isStreaming) {
+        inpBitDepth.max = 12;
+        bitDepthHint.textContent = '[1 - 12]';
+      } else {
+        inpBitDepth.max = 8;
+        bitDepthHint.textContent = '[1 - 8]';
+        if (parseInt(inpBitDepth.value) > 8) {
+          inpBitDepth.value = 8;
+        }
+      }
+      updateBadge();
+    });
 
     function updateFixedChannelOptions() {
       const currentVal = selFixedChannel.value;
@@ -585,7 +616,9 @@
       const startX = parseInt(inpStartX.value) || Math.floor(width / 2);
       const startY = parseInt(inpStartY.value) || Math.floor(height / 2);
       const strategy = parseInt(selStrategy.value) || 3;
-      const bitDepth = Math.max(1, Math.min(8, parseInt(inpBitDepth.value) || 6));
+      const paletteMode = selPaletteMode.value;
+      const maxAllowedDepth = paletteMode === 'on_the_fly' ? 12 : 8;
+      const bitDepth = Math.max(1, Math.min(maxAllowedDepth, parseInt(inpBitDepth.value) || 6));
       const space = selColorSpace.value;
       const fixed = selFixedChannel.value === 'none' ? null : parseInt(selFixedChannel.value);
       const shuffle = chkShuffle.checked;
@@ -599,7 +632,7 @@
       totalCanvasPixels = width * height;
       const totalPalette = Math.pow(2, bitDepth * 3);
 
-      if (totalCanvasPixels > totalPalette) {
+      if (paletteMode === 'precomputed' && totalCanvasPixels > totalPalette) {
         elWarn.style.display = 'block';
         elWarn.textContent = `Warning: Canvas (${totalCanvasPixels.toLocaleString()} px) exceeds unique palette (${totalPalette.toLocaleString()} colors). Colors will repeat cyclically.`;
       } else {
@@ -675,7 +708,8 @@
         threads: threadCount,
         uncapped,
         batchSpeed,
-        useRStar: chkRStar.checked
+        useRStar: chkRStar.checked,
+        paletteMode
       });
 
       lastStatsTime = performance.now();

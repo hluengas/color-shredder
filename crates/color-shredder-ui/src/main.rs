@@ -5,7 +5,8 @@
 //! live progress metrics, and strategy selection.
 
 use color_shredder_core::{
-    ColorGeneratorConfig, ColorSpace, Coordinate, Engine, EngineConfig, EngineStats, Strategy,
+    ColorGeneratorConfig, ColorSpace, Coordinate, Engine, EngineConfig, EngineStats, PaletteMode,
+    Strategy,
 };
 use dioxus::prelude::*;
 
@@ -84,6 +85,7 @@ fn App() -> Element {
                             fixed_channel: fixed_chan,
                             shuffle: shuffle(),
                             seed: seed_val,
+                            mode: PaletteMode::Precomputed,
                         },
                     };
                     current_engine = Some(Engine::new(cfg));

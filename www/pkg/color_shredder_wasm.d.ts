@@ -13,7 +13,7 @@ export class ShredderEngine {
      */
     get_rgba_ptr(): number;
     is_finished(): boolean;
-    constructor(width: number, height: number, start_x: number, start_y: number, strategy_num: number, bit_depth: number, color_space_str: string, fixed_channel_opt: number | null | undefined, shuffle: boolean, seed_opt: number | null | undefined, use_rstar: boolean);
+    constructor(width: number, height: number, start_x: number, start_y: number, strategy_num: number, bit_depth: number, color_space_str: string, fixed_channel_opt: number | null | undefined, shuffle: boolean, seed_opt: number | null | undefined, use_rstar: boolean, palette_mode_opt?: string | null);
     /**
      * Advance the simulation by up to `batch_size` pixels.
      * Internal candidate search utilizes Rayon multithreading across Web Workers.
@@ -69,7 +69,7 @@ export interface InitOutput {
     readonly shredderengine_get_rgba_len: (a: number) => number;
     readonly shredderengine_get_rgba_ptr: (a: number) => number;
     readonly shredderengine_is_finished: (a: number) => number;
-    readonly shredderengine_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => number;
+    readonly shredderengine_new: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number) => number;
     readonly shredderengine_step: (a: number, b: number) => number;
     readonly wbg_rayon_poolbuilder_build: (a: number) => void;
     readonly wbg_rayon_poolbuilder_mainJS: (a: number) => any;

@@ -48,11 +48,14 @@ export class ShredderEngine {
      * @param {boolean} shuffle
      * @param {number | null | undefined} seed_opt
      * @param {boolean} use_rstar
+     * @param {string | null} [palette_mode_opt]
      */
-    constructor(width, height, start_x, start_y, strategy_num, bit_depth, color_space_str, fixed_channel_opt, shuffle, seed_opt, use_rstar) {
+    constructor(width, height, start_x, start_y, strategy_num, bit_depth, color_space_str, fixed_channel_opt, shuffle, seed_opt, use_rstar, palette_mode_opt) {
         const ptr0 = passStringToWasm0(color_space_str, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
         const len0 = WASM_VECTOR_LEN;
-        const ret = wasm.shredderengine_new(width, height, start_x, start_y, strategy_num, bit_depth, ptr0, len0, isLikeNone(fixed_channel_opt) ? Number.MAX_SAFE_INTEGER : (fixed_channel_opt) >>> 0, shuffle, !isLikeNone(seed_opt), isLikeNone(seed_opt) ? 0 : seed_opt, use_rstar);
+        var ptr1 = isLikeNone(palette_mode_opt) ? 0 : passStringToWasm0(palette_mode_opt, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        var len1 = WASM_VECTOR_LEN;
+        const ret = wasm.shredderengine_new(width, height, start_x, start_y, strategy_num, bit_depth, ptr0, len0, isLikeNone(fixed_channel_opt) ? Number.MAX_SAFE_INTEGER : (fixed_channel_opt) >>> 0, shuffle, !isLikeNone(seed_opt), isLikeNone(seed_opt) ? 0 : seed_opt, use_rstar, ptr1, len1);
         this.__wbg_ptr = ret;
         ShredderEngineFinalization.register(this, this.__wbg_ptr, this);
         return this;

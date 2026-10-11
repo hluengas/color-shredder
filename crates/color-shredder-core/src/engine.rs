@@ -1,6 +1,5 @@
 use crate::canvas::{Canvas, Coordinate};
-use crate::color::Color;
-use crate::generator::{generate_colors, ColorGeneratorConfig};
+use crate::generator::{ColorGeneratorConfig, StreamingColorSource};
 use crate::spatial::RStarIndex;
 use crate::strategies::{evaluate_best_candidate, Strategy};
 #[cfg(feature = "serde")]
@@ -46,8 +45,7 @@ pub struct EngineStats {
 pub struct Engine {
     pub config: EngineConfig,
     pub canvas: Canvas,
-    colors: Vec<Color>,
-    color_index: usize,
+    color_source: StreamingColorSource,
     pixels_placed: usize,
     frontier: Vec<Coordinate>,
     frontier_set: Vec<bool>, // Fast O(1) membership check
@@ -58,7 +56,7 @@ pub struct Engine {
 impl Engine {
     pub fn new(config: EngineConfig) -> Self {
         let canvas = Canvas::new(config.width, config.height);
-        let colors = generate_colors(&config.color_config);
+        let color_source = StreamingColorSource::new(config.color_config);
 
         let use_rstar = config.use_rstar && config.strategy == Strategy::Neighborhood;
         let rstar_index = if use_rstar {
@@ -72,8 +70,7 @@ impl Engine {
         let mut engine = Self {
             config,
             canvas,
-            colors,
-            color_index: 0,
+            color_source,
             pixels_placed: 0,
             frontier: Vec::with_capacity(initial_frontier_cap),
             frontier_set: vec![false; size],
@@ -87,13 +84,7 @@ impl Engine {
     }
 
     fn seed(&mut self) {
-        if self.colors.is_empty() {
-            self.is_finished = true;
-            return;
-        }
-
-        let first_color = self.colors[self.color_index];
-        self.color_index = (self.color_index + 1) % self.colors.len();
+        let first_color = self.color_source.next_color();
         self.pixels_placed += 1;
 
         let seed_coord = self.config.start_point;
@@ -150,7 +141,7 @@ impl Engine {
                 break;
             }
 
-            let target_color = self.colors[self.color_index];
+            let target_color = self.color_source.next_color();
 
             // Determine best candidate coordinate
             let best_coord = if let Some(rstar) = &self.rstar_index {
@@ -170,7 +161,6 @@ impl Engine {
             };
 
             // Paint the chosen coordinate
-            self.color_index = (self.color_index + 1) % self.colors.len();
             self.pixels_placed += 1;
             self.canvas.paint(coord, target_color);
             self.remove_from_frontier(coord);
@@ -280,10 +270,34 @@ mod tests {
         };
 
         let mut engine = Engine::new(config);
-        assert_eq!(engine.colors.len(), 64);
         let final_stats = engine.run_to_completion();
         assert!(final_stats.is_finished);
         assert_eq!(final_stats.pixels_placed, 256);
+        assert_eq!(final_stats.percent_complete, 100.0);
+    }
+
+    #[test]
+    fn test_engine_on_the_fly_streaming() {
+        use crate::generator::PaletteMode;
+
+        let config = EngineConfig {
+            width: 32,
+            height: 32, // 1024 total pixels
+            start_point: Coordinate::new(16, 16),
+            strategy: Strategy::Neighborhood,
+            use_rstar: false,
+            color_config: ColorGeneratorConfig {
+                bit_depth: 10, // 10-bit depth (1 billion theoretical colors)
+                seed: Some(777),
+                mode: PaletteMode::OnTheFly,
+                ..Default::default()
+            },
+        };
+
+        let mut engine = Engine::new(config);
+        let final_stats = engine.run_to_completion();
+        assert!(final_stats.is_finished);
+        assert_eq!(final_stats.pixels_placed, 1024);
         assert_eq!(final_stats.percent_complete, 100.0);
     }
 }

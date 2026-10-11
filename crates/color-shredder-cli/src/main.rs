@@ -6,7 +6,7 @@
 
 use clap::Parser;
 use color_shredder_core::{
-    ColorGeneratorConfig, ColorSpace, Coordinate, Engine, EngineConfig, Strategy,
+    ColorGeneratorConfig, ColorSpace, Coordinate, Engine, EngineConfig, PaletteMode, Strategy,
 };
 use std::path::Path;
 use std::time::Instant;
@@ -57,6 +57,10 @@ struct Args {
     /// Optional 64-bit PRNG seed for deterministic runs.
     #[arg(long = "seed")]
     seed: Option<u64>,
+
+    /// Dynamically stream/generate colors on the fly in batches rather than pre-computing in RAM.
+    #[arg(long = "on-the-fly")]
+    on_the_fly: bool,
 }
 
 fn main() {
@@ -88,12 +92,19 @@ fn main() {
         }
     });
 
+    let mode = if args.on_the_fly {
+        PaletteMode::OnTheFly
+    } else {
+        PaletteMode::Precomputed
+    };
+
     let color_config = ColorGeneratorConfig {
         bit_depth: args.bit_depth,
         color_space,
         fixed_channel,
         shuffle: fixed_channel.is_none(),
         seed: args.seed,
+        mode,
     };
 
     let engine_config = EngineConfig {
