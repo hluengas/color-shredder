@@ -48,6 +48,7 @@ pub struct Engine {
     pub canvas: Canvas,
     colors: Vec<Color>,
     color_index: usize,
+    pixels_placed: usize,
     frontier: Vec<Coordinate>,
     frontier_set: Vec<bool>, // Fast O(1) membership check
     rstar_index: Option<RStarIndex>,
@@ -73,6 +74,7 @@ impl Engine {
             canvas,
             colors,
             color_index: 0,
+            pixels_placed: 0,
             frontier: Vec::with_capacity(initial_frontier_cap),
             frontier_set: vec![false; size],
             rstar_index,
@@ -91,7 +93,8 @@ impl Engine {
         }
 
         let first_color = self.colors[self.color_index];
-        self.color_index += 1;
+        self.color_index = (self.color_index + 1) % self.colors.len();
+        self.pixels_placed += 1;
 
         let seed_coord = self.config.start_point;
         self.canvas.paint(seed_coord, first_color);
@@ -142,7 +145,7 @@ impl Engine {
         let total_pixels = self.config.width * self.config.height;
 
         for _ in 0..batch_size {
-            if self.color_index >= self.colors.len() || self.frontier.is_empty() {
+            if self.pixels_placed >= total_pixels || self.frontier.is_empty() {
                 self.is_finished = true;
                 break;
             }
@@ -167,7 +170,8 @@ impl Engine {
             };
 
             // Paint the chosen coordinate
-            self.color_index += 1;
+            self.color_index = (self.color_index + 1) % self.colors.len();
+            self.pixels_placed += 1;
             self.canvas.paint(coord, target_color);
             self.remove_from_frontier(coord);
 
@@ -185,7 +189,7 @@ impl Engine {
                 }
             }
 
-            if self.color_index >= total_pixels {
+            if self.pixels_placed >= total_pixels {
                 self.is_finished = true;
                 break;
             }
@@ -214,7 +218,7 @@ impl Engine {
 
     pub fn stats(&self) -> EngineStats {
         let total_pixels = self.config.width * self.config.height;
-        let placed = self.color_index.min(total_pixels);
+        let placed = self.pixels_placed.min(total_pixels);
         let pct = if total_pixels > 0 {
             (placed as f32 / total_pixels as f32) * 100.0
         } else {
@@ -254,6 +258,29 @@ mod tests {
         assert!(!engine.is_finished);
         assert!(engine.stats().pixels_placed >= 1);
 
+        let final_stats = engine.run_to_completion();
+        assert!(final_stats.is_finished);
+        assert_eq!(final_stats.pixels_placed, 256);
+        assert_eq!(final_stats.percent_complete, 100.0);
+    }
+
+    #[test]
+    fn test_engine_palette_smaller_than_canvas() {
+        let config = EngineConfig {
+            width: 16,
+            height: 16, // 256 total pixels
+            start_point: Coordinate::new(8, 8),
+            strategy: Strategy::Neighborhood,
+            use_rstar: false,
+            color_config: ColorGeneratorConfig {
+                bit_depth: 2, // 2^2 = 4 values per channel -> 4^3 = 64 colors (< 256 pixels)
+                seed: Some(42),
+                ..Default::default()
+            },
+        };
+
+        let mut engine = Engine::new(config);
+        assert_eq!(engine.colors.len(), 64);
         let final_stats = engine.run_to_completion();
         assert!(final_stats.is_finished);
         assert_eq!(final_stats.pixels_placed, 256);

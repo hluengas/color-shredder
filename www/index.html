@@ -86,8 +86,9 @@
     }
 
     canvas {
-      width: 100%;
-      height: 100%;
+      width: 512px;
+      height: 512px;
+      display: block;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
@@ -335,22 +336,22 @@
       <div class="form-grid-2">
         <div class="control-group">
           <label for="inp-width">Width <span class="hint">[px]</span></label>
-          <input type="number" id="inp-width" value="64" min="2" max="2048" step="1">
+          <input type="number" id="inp-width" value="64" min="2" max="8192" step="1">
         </div>
         <div class="control-group">
           <label for="inp-height">Height <span class="hint">[px]</span></label>
-          <input type="number" id="inp-height" value="64" min="2" max="2048" step="1">
+          <input type="number" id="inp-height" value="64" min="2" max="8192" step="1">
         </div>
       </div>
 
       <div class="form-grid-2">
         <div class="control-group">
           <label for="inp-start-x">Start X <span class="hint">[coord]</span></label>
-          <input type="number" id="inp-start-x" value="32" min="0" max="2047" step="1">
+          <input type="number" id="inp-start-x" value="32" min="0" max="8191" step="1">
         </div>
         <div class="control-group">
           <label for="inp-start-y">Start Y <span class="hint">[coord]</span></label>
-          <input type="number" id="inp-start-y" value="32" min="0" max="2047" step="1">
+          <input type="number" id="inp-start-y" value="32" min="0" max="8191" step="1">
         </div>
       </div>
 
@@ -536,8 +537,8 @@
         simWorker = null;
       }
 
-      const width = Math.max(2, Math.min(2048, parseInt(inpWidth.value) || 64));
-      const height = Math.max(2, Math.min(2048, parseInt(inpHeight.value) || 64));
+      const width = Math.max(2, Math.min(8192, parseInt(inpWidth.value) || 64));
+      const height = Math.max(2, Math.min(8192, parseInt(inpHeight.value) || 64));
       const startX = parseInt(inpStartX.value) || Math.floor(width / 2);
       const startY = parseInt(inpStartY.value) || Math.floor(height / 2);
       const strategy = parseInt(selStrategy.value) || 3;
@@ -545,7 +546,9 @@
       const space = selColorSpace.value;
       const fixed = selFixedChannel.value === 'none' ? null : parseInt(selFixedChannel.value);
       const shuffle = chkShuffle.checked;
-      const seedVal = inpSeed.value.trim() !== '' ? parseFloat(inpSeed.value) : null;
+      const seedVal = inpSeed.value.trim() !== '' 
+        ? parseFloat(inpSeed.value) 
+        : Math.floor(Math.random() * 4294967296);
       const threadCount = Math.max(1, Math.min(128, parseInt(inpThreads.value) || 4));
       const uncapped = chkUncapped.checked;
       const batchSpeed = Math.max(1, parseInt(inpBatchSize.value) || 500);
@@ -564,10 +567,17 @@
 
       canvas.width = width;
       canvas.height = height;
+      const displayHeight = Math.round(512 * (height / width));
+      canvas.style.width = '512px';
+      canvas.style.height = `${displayHeight}px`;
+      const canvasContainer = canvas.parentElement;
+      if (canvasContainer) {
+        canvasContainer.style.height = `${displayHeight}px`;
+      }
       localImageData = ctx.createImageData(width, height);
 
-      // Spawn Dedicated WebAssembly Simulation Worker
-      simWorker = new Worker('worker.js', { type: 'module' });
+      // Spawn Dedicated WebAssembly Simulation Worker with cache-buster
+      simWorker = new Worker(`worker.js?v=${Date.now()}`, { type: 'module' });
 
       simWorker.onmessage = function(e) {
         const msg = e.data;

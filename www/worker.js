@@ -20,7 +20,7 @@ self.onmessage = async function(e) {
     batchSpeed = msg.batchSpeed;
 
     if (!wasmModule) {
-      wasmModule = await init();
+      wasmModule = await init(`./pkg/color_shredder_wasm_bg.wasm?v=${Date.now()}`);
     }
 
     // Initialize Rayon thread pool with detected/requested threads
