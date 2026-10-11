@@ -383,12 +383,12 @@
 
       <div class="form-grid-2">
         <div class="control-group">
-          <label for="sel-fixed-channel">Fixed Channel (-x)</label>
+          <label for="sel-fixed-channel">Fixed Channel <span class="hint">[-x / Grouped]</span></label>
           <select id="sel-fixed-channel">
-            <option value="none" selected>None (All Shuffled)</option>
-            <option value="0">Channel 1 (R / H / H)</option>
-            <option value="1">Channel 2 (G / S / L)</option>
-            <option value="2">Channel 3 (B / V / S)</option>
+            <option value="none" selected>None (Full Shuffle)</option>
+            <option value="0">Red (Group by Red slices)</option>
+            <option value="1">Green (Group by Green slices)</option>
+            <option value="2">Blue (Group by Blue slices)</option>
           </select>
         </div>
         <div class="control-group">
@@ -489,6 +489,49 @@
       const count = Math.pow(2, depth * 3);
       elBadge.textContent = `${count.toLocaleString()} colors (${depth}-bit)`;
     }
+
+    function updateFixedChannelOptions() {
+      const currentVal = selFixedChannel.value;
+      const space = selColorSpace.value;
+      let options = [];
+
+      if (space === 'hsv') {
+        options = [
+          { val: 'none', label: 'None (Full Shuffle)' },
+          { val: '0', label: 'Hue (Group by Hue slices)' },
+          { val: '1', label: 'Saturation (Group by Saturation)' },
+          { val: '2', label: 'Value / Brightness (Group by Value)' }
+        ];
+      } else if (space === 'hls') {
+        options = [
+          { val: 'none', label: 'None (Full Shuffle)' },
+          { val: '0', label: 'Hue (Group by Hue slices)' },
+          { val: '1', label: 'Lightness (Group by Lightness)' },
+          { val: '2', label: 'Saturation (Group by Saturation)' }
+        ];
+      } else {
+        // rgb
+        options = [
+          { val: 'none', label: 'None (Full Shuffle)' },
+          { val: '0', label: 'Red (Group by Red slices)' },
+          { val: '1', label: 'Green (Group by Green slices)' },
+          { val: '2', label: 'Blue (Group by Blue slices)' }
+        ];
+      }
+
+      selFixedChannel.innerHTML = '';
+      for (const opt of options) {
+        const el = document.createElement('option');
+        el.value = opt.val;
+        el.textContent = opt.label;
+        if (opt.val === currentVal) {
+          el.selected = true;
+        }
+        selFixedChannel.appendChild(el);
+      }
+    }
+
+    selColorSpace.addEventListener('change', updateFixedChannelOptions);
 
     inpWidth.addEventListener('input', () => {
       const w = parseInt(inpWidth.value) || 64;
@@ -667,6 +710,7 @@
     });
 
     updateBadge();
+    updateFixedChannelOptions();
     reset();
   </script>
 </body>
